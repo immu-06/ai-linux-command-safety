@@ -1,0 +1,119 @@
+import { useState } from 'react'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+const DECISION_COLORS = {
+  allow: '#1e824c',
+  confirm: '#c47f0a',
+  block: '#c0392b',
+}
+
+const DRIFT_COLORS = {
+  aligned: '#1e824c',
+  minor_deviation: '#c47f0a',
+  major_drift: '#c0392b',
+}
+
+export default function App() {
+  const [sessionId] = useState('demo-session')
+  const [command, setCommand] = useState('')
+  const [goal, setGoal] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function setGoalContract() {
+    if (!goal.trim()) return
+    await fetch(`${API_URL}/api/goal-contract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, stated_goal: goal, scope_boundaries: [], expected_resource_types: [] }),
+    })
+  }
+
+  async function evaluate() {
+    if (!command.trim()) return
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await fetch(`${API_URL}/api/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, session_id: sessionId, cwd: '/', history: [] }),
+      })
+      if (!res.ok) throw new Error(`API error: ${res.status}`)
+      setResult(await res.json())
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '40px auto', padding: 16 }}>
+      <h1>🛡️ SentinelOS</h1>
+      <p style={{ color: '#555' }}>AI command firewall — intent, drift, and risk before execution.</p>
+
+      <section style={{ marginBottom: 24, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
+        <h3>1. Set Goal Contract (optional, enables drift detection)</h3>
+        <input
+          style={{ width: '100%', padding: 8 }}
+          placeholder='e.g. "clean up old log files in /var/log"'
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+        />
+        <button onClick={setGoalContract} style={{ marginTop: 8 }}>Set Goal</button>
+      </section>
+
+      <section style={{ marginBottom: 24, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
+        <h3>2. Evaluate a Command</h3>
+        <input
+          style={{ width: '100%', padding: 8, fontFamily: 'monospace' }}
+          placeholder="rm -rf /var/log/*"
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && evaluate()}
+        />
+        <button onClick={evaluate} disabled={loading} style={{ marginTop: 8 }}>
+          {loading ? 'Evaluating...' : 'Evaluate'}
+        </button>
+      </section>
+
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {result && (
+        <section style={{ padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
+          <h3>Result</h3>
+
+          <div style={{ marginBottom: 12 }}>
+            <span style={{
+              background: DECISION_COLORS[result.policy_decision.decision],
+              color: 'white', padding: '4px 12px', borderRadius: 4, fontWeight: 'bold',
+            }}>
+              {result.policy_decision.decision.toUpperCase()}
+            </span>
+            <span style={{ marginLeft: 12 }}>Risk: {result.risk.risk_level} ({result.risk.risk_score})</span>
+          </div>
+
+          <p><strong>Intent:</strong> {result.intent.summary} <em>({result.intent.category}, conf {result.intent.confidence})</em></p>
+
+          <p>
+            <strong>Drift:</strong>{' '}
+            <span style={{ color: DRIFT_COLORS[result.goal_alignment.drift_flag] }}>
+              {result.goal_alignment.drift_flag}
+            </span>{' '}
+            — {result.goal_alignment.explanation}
+          </p>
+
+          <p><strong>Why:</strong> {result.explanation.reasoning}</p>
+
+          {result.explanation.safer_alternative && (
+            <p><strong>Safer alternative:</strong> <code>{result.explanation.safer_alternative}</code></p>
+          )}
+        </section>
+      )}
+    </div>
+  )
+}
