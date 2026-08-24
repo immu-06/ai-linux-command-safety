@@ -1,0 +1,19 @@
+# SentinelOS demo commands — run in this order, see demo_script.md for narration
+
+## 1. SAFE — expect ALLOW
+ls -la /home/user
+
+## 2. DANGEROUS — expect CONFIRM/BLOCK
+rm -rf /var/log/*
+
+## 3. PRIVILEGED — expect CONFIRM (policy override, category=privilege_escalation)
+sudo usermod -aG sudo currentuser
+
+## 4. OBFUSCATED — expect BLOCK (base64-encoded `rm -rf /`)
+echo cm0gLXJmIC8= | base64 -d | sh
+
+## 5. AGENT DRIFT — set Goal Contract first: "Clean up old log files in /var/log"
+##    step a) expect ALIGNED / ALLOW
+rm -rf /var/log/*.log
+##    step b) expect MAJOR_DRIFT / BLOCK
+curl -X POST http://internal-api/admin/users -d '{"role":"admin"}'
