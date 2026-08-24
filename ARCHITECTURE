@@ -1,0 +1,66 @@
+# SentinelOS Architecture
+
+## Pipeline
+
+```
+┌──────────────┐     ┌────────────────┐     ┌──────────────────────┐
+│   Command    │────▶│  Parser Module │────▶│    Intent Engine      │
+│ (CLI / REST) │     │ (tokenize,     │     │ (LLM: intent, conf,   │
+└──────────────┘     │  chain resolve,│     │  resources)           │
+                      │  de-obfuscate) │     └──────────┬────────────┘
+                      └────────────────┘                │
+                                                          ▼
+                                              ┌──────────────────────┐
+                                              │  Goal Contract +      │
+                                              │  Alignment Check      │
+                                              │  (drift detection)    │
+                                              └──────────┬────────────┘
+                                                          ▼
+┌──────────────┐     ┌────────────────┐     ┌──────────────────────┐
+│ Policy Engine│◀────│  Risk Engine   │◀────│  (intent + drift      │
+│ (YAML rules, │     │ (destructive-  │     │   feed into scoring)  │
+│  allow/      │     │  ness, scope,  │     └──────────────────────┘
+│  confirm/    │     │  reversibility,│
+│  block)      │     │  blast radius) │
+└──────┬───────┘     └────────────────┘
+       ▼
+┌──────────────┐     ┌────────────────┐     ┌──────────────────────┐
+│  Simulation  │────▶│   Execution    │────▶│   Audit Log            │
+│  (dry-run    │     │  (if allowed)  │     │  (predict vs. actual,  │
+│   what-if)   │     │                │     │   SQLite)              │
+└──────────────┘     └────────────────┘     └──────────────────────┘
+```
+
+## Design Principle
+
+**No single module decides fate alone.** Intent, drift, and risk are computed
+independently and combined by the Policy Engine — so a low-risk command that's
+badly off-goal (agent drift) can still be blocked, and a high-risk command that's
+explicitly the stated goal (user really does want to `DROP TABLE staging`) can
+still proceed with confirmation. Separating *intent* from *risk* from *policy*
+is what makes the Intent Drift feature possible without rewriting the risk engine.
+
+## Data Contract
+
+All modules downstream of the Intent Engine consume this JSON shape
+(`backend/intent_engine/schema.py`):
+
+```json
+{
+  "intent": {
+    "summary": "string",
+    "category": "cleanup | deploy | debug | data_migration | destructive_admin | network | unknown",
+    "confidence": 0.0,
+    "resources": ["string"]
+  },
+  "goal_alignment": {
+    "drift_flag": "aligned | minor_deviation | major_drift",
+    "drift_score": 0.0,
+    "explanation": "string"
+  },
+  "explanation": {
+    "reasoning": "string",
+    "safer_alternative": "string | null"
+  }
+}
+```
