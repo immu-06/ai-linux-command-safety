@@ -1,0 +1,22 @@
+# SentinelOS Policy Engine — default rules
+# Owned by Person 3 (Risk & Policy Engine Lead)
+
+thresholds:
+  block: 0.75    # risk_score >= this => blocked outright
+  confirm: 0.40   # risk_score >= this (and below block) => requires human confirmation
+  # below confirm threshold => allowed automatically
+
+overrides:
+  # Categories that always require confirmation regardless of numeric score
+  always_confirm_categories:
+    - privilege_escalation
+    - destructive_admin
+
+  # Drift flags that force at minimum a "confirm" decision
+  drift_escalation:
+    major_drift: block
+    minor_deviation: confirm
+
+audit:
+  log_all_evaluations: true
+  log_blocked_attempts_separately: true
